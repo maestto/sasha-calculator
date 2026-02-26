@@ -1,13 +1,50 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" data-theme="light" data-show-quick-pad="0">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0f766e" />
+  <meta name="theme-color" content="#f4f8ff" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="SashaCalc" />
+  <script>
+    (function preloadUiSettings() {
+      var root = document.documentElement;
+      var themeMeta = document.querySelector('meta[name="theme-color"]');
+      root.dataset.theme = 'light';
+      root.dataset.showQuickPad = '0';
+      if (themeMeta) {
+        themeMeta.setAttribute('content', '#f4f8ff');
+      }
+
+      try {
+        var raw = localStorage.getItem('settings');
+        if (!raw) {
+          return;
+        }
+
+        var parsed = JSON.parse(raw);
+        var rawTheme = parsed && typeof parsed.theme === 'string' ? parsed.theme : 'light';
+        var theme = rawTheme === 'dark' || rawTheme === 'graphite' || rawTheme === 'slate'
+          ? 'dark'
+          : 'light';
+        var showQuickPad = parsed && parsed.showQuickPad === true;
+
+        root.dataset.theme = theme;
+        root.dataset.showQuickPad = showQuickPad ? '1' : '0';
+        if (themeMeta) {
+          themeMeta.setAttribute('content', theme === 'dark' ? '#121316' : '#f4f8ff');
+        }
+      } catch (error) {
+        root.dataset.theme = 'light';
+        root.dataset.showQuickPad = '0';
+        if (themeMeta) {
+          themeMeta.setAttribute('content', '#f4f8ff');
+        }
+      }
+    })();
+  </script>
   <link rel="manifest" href="./manifest.json" />
   <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
@@ -30,7 +67,7 @@
       <ul id="shiftList" class="shift-list" aria-live="polite"></ul>
     </main>
 
-    <div class="fixed-stack" aria-label="Фиксированные панели">
+    <div id="fixedStack" class="fixed-stack" aria-label="Фиксированные панели">
       <div class="fixed-stack-inner">
         <section class="summary-dock" aria-label="Итоги">
           <div class="stats-grid">
@@ -47,11 +84,25 @@
               <span id="salaryTotal" class="stat-value stat-salary">0 ₽</span>
             </div>
           </div>
+          <div class="salary-breakdown" aria-label="Разбивка зарплаты">
+            <div class="break-chip">
+              <span class="break-label">% часть</span>
+              <strong id="percentPart" class="break-value">0 ₽</strong>
+            </div>
+            <div class="break-chip">
+              <span class="break-label">Фикс часть</span>
+              <strong id="fixedPart" class="break-value">0 ₽</strong>
+            </div>
+          </div>
           <div class="summary-footer">
-            <p id="fixedInfo" class="fixed-info">Фикс: 3 000 ₽ / смена</p>
             <button id="clearBtn" class="clear-btn" type="button">Очистить</button>
           </div>
         </section>
+
+        <div id="quickPad" class="quick-pad" aria-label="Быстрая клавиатура">
+          <button class="preset-btn is-minus" type="button" data-preset="-500" aria-label="Уменьшить на 500">−</button>
+          <button class="preset-btn" type="button" data-preset="500" aria-label="Увеличить на 500">+</button>
+        </div>
 
         <form id="cashForm" class="input-dock" autocomplete="off">
           <input
@@ -70,6 +121,10 @@
   </div>
 
   <div id="sheetBackdrop" class="sheet-backdrop" hidden></div>
+  <div id="undoToast" class="toast" hidden role="status" aria-live="polite">
+    <span id="undoText" class="toast-text">Смена удалена</span>
+    <button id="undoBtn" class="toast-action" type="button">Отменить</button>
+  </div>
 
   <section id="settingsSheet" class="sheet" hidden aria-hidden="true" aria-modal="true" role="dialog">
     <div class="sheet-panel">
@@ -88,26 +143,44 @@
         placeholder="Например: Александра"
       />
 
-      <p class="sheet-copy">Настройте диапазоны кассы и проценты. Пустое поле «До» означает бесконечность.</p>
+      <section class="settings-block" aria-label="Настройки интерфейса">
+        <h3 class="settings-subtitle">Интерфейс</h3>
 
-      <div class="rules-header" aria-hidden="true">
-        <span>От</span>
-        <span>До</span>
-        <span>%</span>
-        <span></span>
-      </div>
-      <div id="rulesList" class="rules-list"></div>
+        <div class="theme-switch" role="group" aria-label="Выбор темы">
+          <button id="themeLightBtn" class="theme-btn" type="button" data-theme="light">Светлая</button>
+          <button id="themeDarkBtn" class="theme-btn" type="button" data-theme="dark">Тёмная</button>
+        </div>
 
-      <button id="addRuleBtn" class="secondary-btn" type="button">+ Добавить правило</button>
+        <label class="toggle-row" for="quickPadToggle">
+          <span class="toggle-label">Быстрые кнопки +/− у ввода</span>
+          <input id="quickPadToggle" class="toggle-input" type="checkbox" />
+        </label>
+      </section>
 
-      <label for="fixedPerShiftInput" class="field-label">Фиксированная оплата за смену (руб)</label>
-      <input
-        id="fixedPerShiftInput"
-        class="field-input"
-        type="text"
-        inputmode="numeric"
-        placeholder="3 000"
-      />
+      <section class="settings-block" aria-label="Настройки расчета">
+        <h3 class="settings-subtitle">Расчет</h3>
+        <p class="sheet-copy">Настройте диапазоны кассы и проценты. Пустое поле «До» означает бесконечность.</p>
+
+        <div class="rules-header" aria-hidden="true">
+          <span>От</span>
+          <span>До</span>
+          <span>%</span>
+          <span></span>
+        </div>
+        <div id="rulesList" class="rules-list"></div>
+        <p id="rulesError" class="field-error" hidden></p>
+
+        <button id="addRuleBtn" class="secondary-btn" type="button">+ Добавить правило</button>
+
+        <label for="fixedPerShiftInput" class="field-label">Фиксированная оплата за смену (руб)</label>
+        <input
+          id="fixedPerShiftInput"
+          class="field-input"
+          type="text"
+          inputmode="numeric"
+          placeholder="3 000"
+        />
+      </section>
 
       <button id="saveSettingsBtn" class="primary-btn" type="button">Сохранить настройки</button>
     </div>
@@ -120,14 +193,26 @@
         <h2 class="sheet-title">Экспорт</h2>
         <button class="sheet-close" type="button" data-close-sheet="export" aria-label="Закрыть">×</button>
       </div>
-      <p class="sheet-copy">Скопируйте данные или выгрузите их в удобном формате.</p>
+      <p class="sheet-copy">Попробуйте системное «Поделиться». Если не сработает, скачайте файл.</p>
 
-      <textarea id="exportPreview" class="export-preview" readonly></textarea>
+      <div class="export-preview-wrap">
+        <textarea id="exportPreview" class="export-preview" readonly></textarea>
+        <button
+          id="exportPreviewCopyBtn"
+          class="export-preview-copy"
+          type="button"
+          aria-label="Скопировать текст экспорта"
+        >
+          Копировать
+        </button>
+      </div>
 
-      <button id="copyExportBtn" class="primary-btn" type="button">Копировать</button>
-      <button id="downloadTxtBtn" class="secondary-btn" type="button">Скачать TXT</button>
-      <button id="downloadCsvBtn" class="secondary-btn" type="button">Скачать CSV</button>
-      <button id="telegramExportBtn" class="secondary-btn" type="button">Отправить в Telegram</button>
+      <button id="nativeShareBtn" class="primary-btn" type="button">Поделиться</button>
+      <div id="exportFallback" class="export-fallback" hidden>
+        <p class="sheet-copy export-fallback-copy">Системное «Поделиться» недоступно. Скачайте файл:</p>
+        <button id="downloadTxtBtn" class="secondary-btn" type="button">Скачать TXT</button>
+        <button id="downloadCsvBtn" class="secondary-btn" type="button">Скачать CSV</button>
+      </div>
     </div>
   </section>
 
