@@ -59,6 +59,22 @@ function parseIntegerInput(value) {
   return Number(digits);
 }
 
+function syncRuleRemoveButtons(rulesListElement) {
+  const rows = [...rulesListElement.querySelectorAll('.rule-row')];
+  const isSingleRule = rows.length <= 1;
+
+  rows.forEach((row) => {
+    const removeButton = row.querySelector('.rule-remove');
+
+    if (!(removeButton instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    removeButton.disabled = isSingleRule;
+    removeButton.setAttribute('aria-disabled', String(isSingleRule));
+  });
+}
+
 function pulseMetric(element) {
   if (!element) {
     return;
@@ -88,6 +104,7 @@ function setMetricText(element, nextText) {
 
 function setupSwipeToDelete({ item, onCommit }) {
   let pointerId = null;
+  let touchActive = false;
   let startX = 0;
   let startY = 0;
   let deltaX = 0;
@@ -98,63 +115,36 @@ function setupSwipeToDelete({ item, onCommit }) {
     item.classList.remove('is-swipe-ready');
   };
 
-  item.addEventListener('pointerdown', (event) => {
-    if (event.pointerType === 'mouse' && event.button !== 0) {
-      return;
-    }
-
-    if (event.target instanceof HTMLElement && event.target.closest('.delete-btn')) {
-      return;
-    }
-
-    pointerId = event.pointerId;
-    startX = event.clientX;
-    startY = event.clientY;
-    deltaX = 0;
-    axis = null;
-  });
-
-  item.addEventListener('pointermove', (event) => {
-    if (pointerId === null || event.pointerId !== pointerId) {
-      return;
-    }
-
-    const moveX = event.clientX - startX;
-    const moveY = event.clientY - startY;
-
+  const handleMove = (moveX, moveY) => {
     if (axis === null) {
       if (Math.abs(moveX) < 6 && Math.abs(moveY) < 6) {
-        return;
+        return { isHorizontal: false, cancelGesture: false };
       }
 
       const horizontalIntent = Math.abs(moveX) >= Math.abs(moveY) * 0.55;
       axis = horizontalIntent ? 'x' : 'y';
 
       if (axis === 'y') {
-        pointerId = null;
-        return;
+        return { isHorizontal: false, cancelGesture: true };
       }
-
-      item.setPointerCapture?.(pointerId);
     }
 
     if (axis !== 'x') {
-      return;
+      return { isHorizontal: false, cancelGesture: false };
     }
 
     deltaX = Math.max(-SWIPE_DELETE_MAX, Math.min(0, moveX));
     item.style.transform = `translateX(${deltaX}px)`;
     item.classList.toggle('is-swipe-ready', deltaX <= -SWIPE_DELETE_THRESHOLD);
-  });
 
-  const onPointerDone = (event) => {
-    if (pointerId === null || event.pointerId !== pointerId) {
-      return;
-    }
+    return { isHorizontal: true, cancelGesture: false };
+  };
 
+  const finishGesture = () => {
     const shouldRemove = deltaX <= -SWIPE_DELETE_THRESHOLD;
 
     pointerId = null;
+    touchActive = false;
     deltaX = 0;
     axis = null;
 
@@ -167,8 +157,117 @@ function setupSwipeToDelete({ item, onCommit }) {
     resetItemPosition();
   };
 
-  item.addEventListener('pointerup', onPointerDone);
-  item.addEventListener('pointercancel', onPointerDone);
+  if ('PointerEvent' in window) {
+    item.addEventListener('pointerdown', (event) => {
+      if (event.pointerType === 'mouse' && event.button !== 0) {
+        return;
+      }
+
+      if (event.target instanceof HTMLElement && event.target.closest('.delete-btn')) {
+        return;
+      }
+
+      pointerId = event.pointerId;
+      startX = event.clientX;
+      startY = event.clientY;
+      deltaX = 0;
+      axis = null;
+    });
+
+    item.addEventListener('pointermove', (event) => {
+      if (pointerId === null || event.pointerId !== pointerId) {
+        return;
+      }
+
+      const moveX = event.clientX - startX;
+      const moveY = event.clientY - startY;
+      const moveState = handleMove(moveX, moveY);
+
+      if (moveState.cancelGesture) {
+        pointerId = null;
+        deltaX = 0;
+        axis = null;
+        resetItemPosition();
+        return;
+      }
+
+      if (moveState.isHorizontal) {
+        event.preventDefault();
+      }
+    });
+
+    const onPointerDone = (event) => {
+      if (pointerId === null || event.pointerId !== pointerId) {
+        return;
+      }
+
+      finishGesture();
+    };
+
+    item.addEventListener('pointerup', onPointerDone);
+    item.addEventListener('pointercancel', onPointerDone);
+  }
+
+  item.addEventListener('touchstart', (event) => {
+    if (pointerId !== null) {
+      return;
+    }
+
+    const touch = event.touches[0];
+
+    if (!touch) {
+      return;
+    }
+
+    if (event.target instanceof HTMLElement && event.target.closest('.delete-btn')) {
+      return;
+    }
+
+    touchActive = true;
+    startX = touch.clientX;
+    startY = touch.clientY;
+    deltaX = 0;
+    axis = null;
+  }, { passive: true });
+
+  item.addEventListener('touchmove', (event) => {
+    if (!touchActive || pointerId !== null) {
+      return;
+    }
+
+    const touch = event.touches[0];
+
+    if (!touch) {
+      return;
+    }
+
+    const moveX = touch.clientX - startX;
+    const moveY = touch.clientY - startY;
+    const moveState = handleMove(moveX, moveY);
+
+    if (moveState.cancelGesture) {
+      touchActive = false;
+      deltaX = 0;
+      axis = null;
+      resetItemPosition();
+      return;
+    }
+
+    if (moveState.isHorizontal) {
+      event.preventDefault();
+    }
+  }, { passive: false });
+
+  const onTouchDone = () => {
+    if (!touchActive) {
+      return;
+    }
+
+    finishGesture();
+  };
+
+  item.addEventListener('touchend', onTouchDone);
+  item.addEventListener('touchcancel', onTouchDone);
 }
 
 function bindSheetSwipeClose(sheetElement, onCloseSheet) {
@@ -179,6 +278,7 @@ function bindSheetSwipeClose(sheetElement, onCloseSheet) {
   }
 
   let pointerId = null;
+  let touchActive = false;
   let startY = 0;
   let startX = 0;
   let startTime = 0;
@@ -191,59 +291,44 @@ function bindSheetSwipeClose(sheetElement, onCloseSheet) {
     deltaY = 0;
   };
 
-  panel.addEventListener('pointerdown', (event) => {
-    if (event.pointerType === 'mouse' && event.button !== 0) {
-      return;
-    }
-
+  const canStartDrag = (target) => {
     if (!sheetElement.classList.contains('is-open')) {
-      return;
+      return false;
     }
 
-    if (!(event.target instanceof Element)) {
-      return;
+    if (!(target instanceof Element)) {
+      return false;
     }
 
-    if (event.target.closest('.sheet-close')) {
-      return;
+    if (target.closest('.sheet-close')) {
+      return false;
     }
 
-    if (!event.target.closest('.sheet-handle, .sheet-header')) {
-      return;
-    }
+    return Boolean(target.closest('.sheet-handle, .sheet-header'));
+  };
 
-    pointerId = event.pointerId;
-    startY = event.clientY;
-    startX = event.clientX;
+  const beginDrag = (clientX, clientY) => {
+    startY = clientY;
+    startX = clientX;
     startTime = performance.now();
     deltaY = 0;
-
     sheetElement.classList.add('is-dragging');
-    panel.setPointerCapture?.(pointerId);
-  });
+  };
 
-  panel.addEventListener('pointermove', (event) => {
-    if (pointerId === null || event.pointerId !== pointerId) {
-      return;
-    }
-
-    const horizontalDelta = Math.abs(event.clientX - startX);
-    const verticalDelta = event.clientY - startY;
+  const moveDrag = (clientX, clientY) => {
+    const horizontalDelta = Math.abs(clientX - startX);
+    const verticalDelta = clientY - startY;
 
     if (horizontalDelta > Math.abs(verticalDelta)) {
-      return;
+      return false;
     }
 
     deltaY = Math.max(0, verticalDelta);
     panel.style.transform = `translateY(${deltaY}px)`;
-    event.preventDefault();
-  });
+    return true;
+  };
 
-  const endDrag = (event) => {
-    if (pointerId === null || event.pointerId !== pointerId) {
-      return;
-    }
-
+  const endDrag = () => {
     const elapsedMs = Math.max(performance.now() - startTime, 1);
     const velocity = (deltaY / elapsedMs) * 1000;
     const shouldClose = deltaY >= SHEET_CLOSE_THRESHOLD || velocity >= SHEET_CLOSE_VELOCITY;
@@ -255,8 +340,93 @@ function bindSheetSwipeClose(sheetElement, onCloseSheet) {
     }
   };
 
-  panel.addEventListener('pointerup', endDrag);
-  panel.addEventListener('pointercancel', endDrag);
+  if ('PointerEvent' in window) {
+    panel.addEventListener('pointerdown', (event) => {
+      if (event.pointerType === 'mouse' && event.button !== 0) {
+        return;
+      }
+
+      if (!canStartDrag(event.target)) {
+        return;
+      }
+
+      pointerId = event.pointerId;
+      beginDrag(event.clientX, event.clientY);
+      panel.setPointerCapture?.(pointerId);
+    });
+
+    panel.addEventListener('pointermove', (event) => {
+      if (pointerId === null || event.pointerId !== pointerId) {
+        return;
+      }
+
+      const isDraggingVertically = moveDrag(event.clientX, event.clientY);
+
+      if (isDraggingVertically) {
+        event.preventDefault();
+      }
+    });
+
+    const onPointerEnd = (event) => {
+      if (pointerId === null || event.pointerId !== pointerId) {
+        return;
+      }
+
+      endDrag();
+    };
+
+    panel.addEventListener('pointerup', onPointerEnd);
+    panel.addEventListener('pointercancel', onPointerEnd);
+  }
+
+  panel.addEventListener('touchstart', (event) => {
+    if (pointerId !== null) {
+      return;
+    }
+
+    const touch = event.touches[0];
+
+    if (!touch) {
+      return;
+    }
+
+    if (!canStartDrag(event.target)) {
+      return;
+    }
+
+    touchActive = true;
+    beginDrag(touch.clientX, touch.clientY);
+  }, { passive: true });
+
+  panel.addEventListener('touchmove', (event) => {
+    if (!touchActive || pointerId !== null) {
+      return;
+    }
+
+    const touch = event.touches[0];
+
+    if (!touch) {
+      return;
+    }
+
+    const isDraggingVertically = moveDrag(touch.clientX, touch.clientY);
+
+    if (isDraggingVertically) {
+      event.preventDefault();
+    }
+  }, { passive: false });
+
+  const onTouchEnd = () => {
+    if (!touchActive) {
+      return;
+    }
+
+    touchActive = false;
+    endDrag();
+  };
+
+  panel.addEventListener('touchend', onTouchEnd);
+  panel.addEventListener('touchcancel', onTouchEnd);
 }
 
 export function renderList({
@@ -352,6 +522,7 @@ export function renderSettingsRules({ rulesListElement, rules, formatNumber }) {
   }
 
   rulesListElement.replaceChildren(fragment);
+  syncRuleRemoveButtons(rulesListElement);
 }
 
 export function renderRulesError({ rulesErrorElement, message = '' }) {
@@ -512,12 +683,19 @@ export function bindEvents({
       if (Number.isFinite(toValue) && toValue >= 0) {
         nextFrom = toValue;
       } else if (Number.isFinite(fromValue) && fromValue >= 0) {
-        nextFrom = fromValue + 1000;
+        const inferredTo = fromValue + 1000;
+
+        if (toInput instanceof HTMLInputElement) {
+          toInput.value = formatters.formatNumber(inferredTo);
+        }
+
+        nextFrom = inferredTo;
       }
     }
 
     const ruleRow = createRuleRow({ from: nextFrom, to: null, percent: 0 }, formatters.formatNumber);
     rulesListElement.append(ruleRow);
+    syncRuleRemoveButtons(rulesListElement);
     handlers.onSettingsInput?.();
   });
 
@@ -583,7 +761,11 @@ export function bindEvents({
 
     const row = target.closest('.rule-row');
 
-    if (row) {
+    if (target instanceof HTMLButtonElement && target.disabled) {
+      return;
+    }
+
+    if (row && rulesListElement.children.length > 1) {
       row.remove();
       handlers.onSettingsInput?.();
     }
@@ -591,6 +773,8 @@ export function bindEvents({
     if (rulesListElement.children.length === 0) {
       rulesListElement.append(createRuleRow({ from: 0, to: null, percent: 3 }, formatters.formatNumber));
     }
+
+    syncRuleRemoveButtons(rulesListElement);
   });
 
   saveSettingsButton.addEventListener('click', () => {

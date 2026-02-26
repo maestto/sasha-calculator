@@ -672,6 +672,14 @@ html[data-show-quick-pad="1"] .quick-pad {
   transform: scale(0.95);
 }
 
+.rule-remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  background: #eef3f9;
+  color: #8ea2ba;
+  transform: none;
+}
+
 .field-label {
   display: block;
   margin: 12px 0 6px;
@@ -865,7 +873,7 @@ html[data-show-quick-pad="1"] .quick-pad {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.17s ease, transform 0.17s ease;
-  z-index: 80;
+  z-index: 35;
 }
 
 .toast.is-open {
@@ -990,6 +998,18 @@ html[data-theme="dark"] .sheet-close:hover {
   background: #3d4c66;
 }
 
+html[data-theme="dark"] .sheet-title {
+  color: #edf2fb;
+}
+
+html[data-theme="dark"] .sheet-copy,
+html[data-theme="dark"] .field-label,
+html[data-theme="dark"] .rules-header,
+html[data-theme="dark"] .stat-label,
+html[data-theme="dark"] .break-label {
+  color: #acb8cc;
+}
+
 html[data-theme="dark"] .rule-input,
 html[data-theme="dark"] .percent-input,
 html[data-theme="dark"] .field-input,
@@ -1022,6 +1042,7 @@ html[data-theme="dark"] .secondary-btn,
 html[data-theme="dark"] .export-preview-copy {
   background: #344158;
   border-color: #566582;
+  color: #edf2fb;
 }
 
 html[data-theme="dark"] .theme-btn:hover,
@@ -1044,6 +1065,11 @@ html[data-theme="dark"] .toast {
 html[data-theme="dark"] .toast-action {
   background: #334a7a;
   color: #dce7ff;
+}
+
+html[data-theme="dark"] .rule-remove:disabled {
+  background: #334056;
+  color: #7d8ba2;
 }
 
 .stat-value.is-updated,

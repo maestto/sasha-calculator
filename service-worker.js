@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sasha-calculator-v14';
+const CACHE_NAME = 'sasha-calculator-v15';
 
 const PRECACHE_URLS = [
   './',
