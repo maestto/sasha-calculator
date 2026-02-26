@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sasha-calculator-v15';
+const CACHE_NAME = 'sasha-calculator-v16';
 
 const PRECACHE_URLS = [
   './',
@@ -51,15 +51,41 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  const putInCache = (cacheRequest, response) => {
+    if (!response || !response.ok || response.type === 'opaque') {
+      return response;
+    }
+
+    const responseClone = response.clone();
+    caches.open(CACHE_NAME).then((cache) => cache.put(cacheRequest, responseClone));
+    return response;
+  };
+
+  const isStaticAsset = ['style', 'script', 'manifest', 'font', 'image', 'worker']
+    .includes(request.destination);
+
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
-          return response;
+      fetch(request, { cache: 'no-store' })
+        .then((response) => putInCache(request, response))
+        .catch(async () => {
+          const cachedRequest = await caches.match(request);
+          if (cachedRequest) {
+            return cachedRequest;
+          }
+
+          return caches.match('./index.html');
         })
-        .catch(() => caches.match('./index.html'))
+    );
+
+    return;
+  }
+
+  if (isStaticAsset) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => putInCache(request, response))
+        .catch(() => caches.match(request))
     );
 
     return;
@@ -71,13 +97,7 @@ self.addEventListener('fetch', (event) => {
         return cachedResponse;
       }
 
-      return fetch(request)
-        .then((networkResponse) => {
-          const responseClone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
-          return networkResponse;
-        })
-        .catch(() => caches.match('./index.html'));
+      return fetch(request).then((response) => putInCache(request, response));
     })
   );
 });

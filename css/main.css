@@ -934,6 +934,7 @@ html[data-theme="dark"] .break-chip {
 
 html[data-theme="dark"] .clear-btn {
   background: #3d4b63;
+  color: #edf2fb;
 }
 
 html[data-theme="dark"] .clear-btn:hover {
@@ -992,6 +993,7 @@ html[data-theme="dark"] .sheet-handle {
 
 html[data-theme="dark"] .sheet-close {
   background: #344158;
+  color: #edf2fb;
 }
 
 html[data-theme="dark"] .sheet-close:hover {
@@ -1024,6 +1026,15 @@ html[data-theme="dark"] .field-input:focus,
 html[data-theme="dark"] .export-preview:focus {
   border-color: rgba(106, 141, 255, 0.85);
   box-shadow: 0 0 0 3px rgba(106, 141, 255, 0.23);
+}
+
+html[data-theme="dark"] .rule-remove {
+  background: #334a7a;
+  color: #dce7ff;
+}
+
+html[data-theme="dark"] .rule-remove:hover {
+  background: #3f588f;
 }
 
 html[data-theme="dark"] .settings-block,

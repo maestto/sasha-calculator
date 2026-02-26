@@ -1,8 +1,9 @@
 const REMOVE_ANIMATION_MS = 160;
-const SWIPE_DELETE_THRESHOLD = 40;
-const SWIPE_DELETE_MAX = 96;
-const SHEET_CLOSE_THRESHOLD = 84;
-const SHEET_CLOSE_VELOCITY = 900;
+const SWIPE_DELETE_THRESHOLD = 24;
+const SWIPE_DELETE_MAX = 84;
+const SWIPE_DELETE_VELOCITY = -620;
+const SHEET_CLOSE_THRESHOLD = 64;
+const SHEET_CLOSE_VELOCITY = 700;
 
 function createRuleRow({ from = 0, to = null, percent = 0 }, formatNumber) {
   const row = document.createElement('div');
@@ -107,6 +108,7 @@ function setupSwipeToDelete({ item, onCommit }) {
   let touchActive = false;
   let startX = 0;
   let startY = 0;
+  let startTime = 0;
   let deltaX = 0;
   let axis = null;
 
@@ -141,7 +143,9 @@ function setupSwipeToDelete({ item, onCommit }) {
   };
 
   const finishGesture = () => {
-    const shouldRemove = deltaX <= -SWIPE_DELETE_THRESHOLD;
+    const elapsedMs = Math.max(performance.now() - startTime, 1);
+    const velocityX = (deltaX / elapsedMs) * 1000;
+    const shouldRemove = deltaX <= -SWIPE_DELETE_THRESHOLD || (deltaX <= -10 && velocityX <= SWIPE_DELETE_VELOCITY);
 
     pointerId = null;
     touchActive = false;
@@ -170,6 +174,7 @@ function setupSwipeToDelete({ item, onCommit }) {
       pointerId = event.pointerId;
       startX = event.clientX;
       startY = event.clientY;
+      startTime = performance.now();
       deltaX = 0;
       axis = null;
     });
@@ -226,6 +231,7 @@ function setupSwipeToDelete({ item, onCommit }) {
     touchActive = true;
     startX = touch.clientX;
     startY = touch.clientY;
+    startTime = performance.now();
     deltaX = 0;
     axis = null;
   }, { passive: true });
@@ -319,7 +325,7 @@ function bindSheetSwipeClose(sheetElement, onCloseSheet) {
     const horizontalDelta = Math.abs(clientX - startX);
     const verticalDelta = clientY - startY;
 
-    if (horizontalDelta > Math.abs(verticalDelta)) {
+    if (horizontalDelta > Math.abs(verticalDelta) * 1.2) {
       return false;
     }
 
